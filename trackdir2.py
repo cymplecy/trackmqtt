@@ -166,12 +166,20 @@ dx = 0
 dy = 0
 wherex = [0,0]
 wherey = [0,0]
+wherexav = 0
+whereyav = 0
 oldx = 0
 oldy = 0
 dia = [0,0]
 direction = 90
 olddirection = 0
 ball=0
+msgx = 0
+msgy = 0
+msgdir = 0
+msgdiff = 0
+msgradius = 0 
+msgbearing = 0
 try:
     while(True):
         for ball in range(2):
@@ -245,40 +253,34 @@ try:
             cv2.imshow('closing',closing)
             cv2.imshow('Tracking',frame)
             cv2.imshow('camera',capframe)    
-                
-            wherexav = ((wherex[0] + wherex[1]) / 2)
-            whereyav = ((wherey[0] + wherey[1]) / 2)
-            dx = wherexav - oldx
-            dy = whereyav - oldy
-            #print "dx dy", ((dx * dx) + (dy * dy))
-            msgs = []
-            if ((dx * dx) + (dy * dy)) > 100: 
-                for ball in range(2): 
-                    print "ball"+str(ball)+": ",wherex[ball],wherey[ball]
-                msgs = [("where/x", (wherexav -160),0,True)]
-                msgs = [("where/y",(120 - whereyav),0,True)] + msgs
-                oldx = wherexav
-                oldy = whereyav                
-            direction = (int(math.atan2((wherey[0] - wherey[1]),(wherex[0] - wherex[1])) * 180.0 / 3.1415926) + 450) % 360
-            
-            diff = (direction - olddirection + 180) % 360 - 180
-            diff = diff / 2
-            direction = (olddirection + diff + 360) % 360
-            if abs(diff) > 5:
-                print "direction" , direction
-                print "diff", diff
-                msgs = [("where/diff", diff ,0,True)] + msgs
-                msgs = [("where/direction", direction,0,True)] + msgs  
-                olddirection = direction  
+             
+        alphaxy = 0.5 
+        wherexav = int((((wherex[0] + wherex[1]) / 2.0) * alphaxy) + (wherexav * (1- alphaxy)))
+        whereyav = int((((wherey[0] + wherey[1]) / 2.0) * alphaxy) + (whereyav * (1- alphaxy)))
+        radius = int(math.sqrt(((wherexav -160) * (wherexav -160)) + ((120 - whereyav) * (120 - whereyav))))
+        alphadir = 0.25
+        direction = (int(math.atan2((wherey[0] - wherey[1]),(wherex[0] - wherex[1])) * 180.0 / 3.1415926) + 450) % 360
 
-                #else:
-                #    publish.single("cycy42/where/direction", payload = 180-direction,hostname="win8.local", qos=0,retain=True)   
-                #    olddirection = 180 - direction
+        diff = (direction - olddirection + 180) % 360 - 180
+        diff = diff * alphadir
+        direction = int((olddirection + diff + 360) % 360)            
+        olddirection = direction
+        bearing = ((180 - ((int(math.atan2((120 - whereyav),(wherexav -160)) * 180.0 / 3.1415926) + 450) % 360)) + 360) % 360
+        msgs = []
+        if (time.time() - tick) > 1:
+            for ball in range(2): 
+                print "ball"+str(ball)+": ",wherex[ball],wherey[ball]
+            msgs = [("where/radius", radius,0,True)]  + msgs              
+            msgs = [("where/x", (wherexav -160),0,True)]  + msgs
+            msgs = [("where/y",(120 - whereyav),0,True)] + msgs
+            print "direction" , direction
+            #print "diff", diff
+            #msgs = [("where/diff", diff ,0,True)] + msgs
+            msgs = [("where/direction", direction,0,True)] + msgs  
+            msgs = [("where/bearing", bearing,0,True)] + msgs  
 
-
-            if len(msgs) > 0: 
-                print msgs
-                publish.multiple(msgs, hostname="127.0.0.1")
+            print msgs
+            publish.multiple(msgs, hostname="127.0.0.1")
            
             tick = time.time()
         k = cv2.waitKey(5) & 0xFF

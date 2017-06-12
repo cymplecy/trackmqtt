@@ -223,7 +223,7 @@ while(1):
         print wherex,wherey
         #client1.loop_start()    #start the loop#
         #client1.subscribe("house/bulbs/bulb1")
-        if time.time() - tick > 1:
+        if time.time() - tick > 0:
             dx = wherex - oldx
             dy = wherey - oldy
             if ((dx * dx) + (dy * dy))> 100: 
