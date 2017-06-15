@@ -19,6 +19,7 @@ def lineEquation(l,m,j):
     try:
         pdist = (a*j[0]+(b*j[1])+c)/math.sqrt((a*a)+(b*b))
     except:
+        #print "LE except"
         return 0
     else:
         return pdist
@@ -26,14 +27,16 @@ def lineEquation(l,m,j):
 def lineSlope(l,m):
     dx = m[0] - l[0]
     dy = m[1] - l[1]
-    if dy != 0:
+    direction = (int(math.atan2(dy,dx) * 180.0 / 3.1415926) + 450) % 360        
+    
+    if dx != 0: #sw changed from dy as that is the divisor
         align = 1
         dxy = dy/dx
-        return dxy,align
+        return dxy,align,direction
     else:
         align = 0
         dxy = 0.0
-        return dxy,align
+        return dxy,align,direction
 
 def getSquares(contours,cid):
     x,y,w,h= cv2.boundingRect(contours[cid])
@@ -225,17 +228,24 @@ cap = cv2.VideoCapture(-1)
 
 #show the image
 #wait until some key is pressed to procced
+oldimg = np.zeros((320,320,3), np.uint8)
 while True:
+    print "---"
     _, image = cap.read()
-    img = image
+    #gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    #blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    #thresh = cv2.threshold(blurred, 128, 255, cv2.THRESH_BINARY)[1]    
+    #img = thresh
     edges = cv2.Canny(image,100,200)
-    cv2.imshow("Canny",edges)    
-    #contours,hierarchy = cv2.findContours(edges,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    img = image
+    #cv2.imshow("thresh",thresh)    
     im2,contours,hierarchy = cv2.findContours(edges,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)   
     cv2.imshow("contours",im2)
     mu = []
     mc = []
     mark = 0
+    maxc = 0
+    bigc = -1
     for x in range(0,len(contours)):
         mu.append(cv2.moments(contours[x]))
 
@@ -244,17 +254,40 @@ while True:
             mc.append((m['m10']/m['m00'],m['m01']/m['m00']))
         else:
             mc.append((0,0))
-
+    print hierarchy
     for x in range(0,len(contours)):
+        print "h:", x ,hierarchy[0][x] , cv2.contourArea(contours[x])
         k = x
         c = 0
         while(hierarchy[0][k][2] != -1):
-            k = hierarchy[0][k][2]
-            c = c + 1
-        if hierarchy[0][k][2] != -1:
-            c = c + 1
+            if cv2.contourArea(contours[hierarchy[0][k][2]]) > 5:        
+                k = hierarchy[0][k][2]
+                c = c + 1
+                print "c+1 in loop"
+            else:
+                k = hierarchy[0][k][2]            
+                print "cont too small"
+        #if hierarchy[0][k][2] != -1:
+        #    c = c + 1
+        #    print "c+1 at end"
+        if c > maxc:
+            maxc = c
+            bigc = x
+        
+        if c > 2:
+            print "possible hier1" , x, hierarchy[0][x] , "c:" , c   
+            if ((hierarchy[0][x][0] == -1) and  (hierarchy[0][x][1] == -1)):
+                print "but rejected as no siblings"
+                c = -1
+            if (c > 5):
+                print "but rejected as too many children descendants"  
+                c = -2                
+        
+        if c > 2:
 
-        if c >= 5:
+            ##perimeter = cv2.arcLength(contours[x],True)
+            #if (perimeter > 200):
+            #    mark = mark #-100
             if mark == 0:
                 A = x
             elif mark == 1:
@@ -263,7 +296,10 @@ while True:
                 C = x
             mark = mark+1
 
-    if mark >2 :
+    if mark > 2 :
+        print "final hier" , A, hierarchy[0][A]    
+        print "final hier" , B, hierarchy[0][B]    
+        print "final hier" , C, hierarchy[0][C]    
         AB = distance(mc[A],mc[B])
         BC = distance(mc[B],mc[C])
         AC = distance(mc[A],mc[C])
@@ -283,12 +319,13 @@ while True:
 
         top = outlier
         dist = lineEquation(mc[median1],mc[median2],mc[outlier])
-        slope,align = lineSlope(mc[median1],mc[median2])
+        slope,align,_ = lineSlope(mc[median1],mc[median2])
 
 
         if align == 0:
             bottom = median1
-            right = median2
+            right = median2 
+            #orientation = 0 # added by sw as seemed to be missing
         elif(slope < 0 and dist < 0):
             bottom = median1
             right = median2
@@ -305,11 +342,14 @@ while True:
             bottom = median1
             right = median2
             orientation = 3
-
+            
+        _,_,direction = lineSlope(mc[bottom],mc[top])
+        print "direction" , direction    
         areatop = 0.0
         arearight = 0.0
         areabottom = 0.0
         if(top < len(contours) and right < len(contours) and bottom < len(contours) and cv2.contourArea(contours[top]) > 10 and cv2.contourArea(contours[right]) > 10 and cv2.contourArea(contours[bottom]) > 10):
+            print "top", top, cv2.contourArea(contours[top]), len(contours)
             tempL = []
             tempM = []
             tempO = []
@@ -318,11 +358,15 @@ while True:
             tempL = getVertices(contours,top,slope,tempL)
             tempM = getVertices(contours,right,slope,tempM)
             tempO = getVertices(contours,bottom,slope,tempO)
+            #print tempL
+            #print tempM
+            #print tempO
             L = updateCornerOr(orientation,tempL)
             M = updateCornerOr(orientation,tempM)
             O = updateCornerOr(orientation,tempO)
             
             iflag,N = getIntersection(M[1],M[2],O[3],O[2],N)
+            #print L,M,N,O
             src.append(L[0])
             src.append(M[1])
             src.append(N)
@@ -331,16 +375,19 @@ while True:
             warped1 = four_point_transform(img,src)
             warped = warped1
             #sw added to rotate image to correct orientation for visual purposes only - not needed for zbar
-            rowsrot,colsrot,dummy = warped1.shape
+            #rowsrot,colsrot,dummy = warped1.shape
             #print rowsrot,colsrot,dummy
-            if orientation > 0:
-                Mrot = cv2.getRotationMatrix2D((colsrot/2,rowsrot/2),(90 * orientation),1)
-                warped = cv2.warpAffine(warped1,Mrot,(colsrot,rowsrot))
+            #if orientation > 0:
+            #    Mrot = cv2.getRotationMatrix2D((colsrot/2,rowsrot/2),(90 * orientation),1)
+            #    warped = cv2.warpAffine(warped1,Mrot,(colsrot,rowsrot))
             cv2.imshow("warped",warped)
             cv2.circle(img,N,1,(0,0,255),2)
             cv2.drawContours(img,contours,top,(255,0,0),2)
             cv2.drawContours(img,contours,right,(0,255,0),2)
             cv2.drawContours(img,contours,bottom,(0,0,255),2)
+            cv2.drawContours(img,contours,bigc,(255,255,0),2)            
+            #print "green:" , cv2.arcLength(contours[bottom],True)
+            
             warped = cv2.cvtColor(warped,cv2.COLOR_BGR2GRAY)
             scanner = zbar.ImageScanner()
             scanner.parse_config('enable')
@@ -349,10 +396,15 @@ while True:
             for symbol in imagez:
                 x = symbol.data
                 print x
-                print int(180.0 * slope / 3.1415926) 
+            #inf =  0 / 0
+            oldimg = warped
+    else:
+        print "no image found"
+        cv2.imshow("warped",oldimg)
 
     cv2.imshow("rect",img)
-    key = cv2.waitKey(1) & 0xFF
+    #time.sleep(1)
+    key = cv2.waitKey(3000) & 0xFF
     if key == ord("q"):
         break
 

@@ -4,6 +4,7 @@ import paho.mqtt.publish as publish  #import the client1
 import time
 import math
 import ConfigParser
+import aruco
 
 config = ConfigParser.ConfigParser()
 config.read("settings.ini")
@@ -130,24 +131,24 @@ def four_point_transform(image, pts):
 def nothing(x):
     pass
 # Creating a windows for later use
-cv2.namedWindow('HueComp')
-cv2.namedWindow('SatComp')
-cv2.namedWindow('ValComp')
-cv2.namedWindow('closing')
+#cv2.namedWindow('HueComp')
+#cv2.namedWindow('SatComp')
+#cv2.namedWindow('ValComp')
+#cv2.namedWindow('closing')
 cv2.namedWindow('Tracking')
 cv2.namedWindow('camera')
 
 
 # Creating track bar for min and max for hue, saturation and value
 # You can adjust the defaults as you like
-cv2.createTrackbar('hmin', 'HueComp',hmin,179,nothing)
-cv2.createTrackbar('hmax', 'HueComp',hmax,179,nothing)
+#cv2.createTrackbar('hmin', 'HueComp',hmin,179,nothing)
+#cv2.createTrackbar('hmax', 'HueComp',hmax,179,nothing)
 
-cv2.createTrackbar('smin', 'SatComp',smin,255,nothing)
-cv2.createTrackbar('smax', 'SatComp',smax,255,nothing)
+#cv2.createTrackbar('smin', 'SatComp',smin,255,nothing)
+#cv2.createTrackbar('smax', 'SatComp',smax,255,nothing)
 
-cv2.createTrackbar('vmin', 'ValComp',vmin,255,nothing)
-cv2.createTrackbar('vmax', 'ValComp',vmax,255,nothing)
+#cv2.createTrackbar('vmin', 'ValComp',vmin,255,nothing)
+#cv2.createTrackbar('vmax', 'ValComp',vmax,255,nothing)
 
 #pts = np.array([(ctlx, ctly), (ctrx, ctry), (cblx + cbw, cby), (cblx , cby)])    
 cv2.createTrackbar('topleftx', 'Tracking',ctlx,320,nothing)
@@ -189,110 +190,140 @@ msgdir = 0
 msgdiff = 0
 msgradius = 0 
 msgbearing = 0
+
+# load board and camera parameters
+#boardconfig = aruco.BoardConfiguration("chessboardinfo_small_meters.yml")
+camparam = aruco.CameraParameters()
+camparam.readFromXMLFile("dfk72_6mm_param2.yml")
+
+# create detector and set parameters
+detector = aruco.MarkerDetector()
+params = detector.getParams()
+
+#detector.setParams(camparam)
+# set minimum marker size for detection
+#markerdetector = detector.getMarkerDetector()
+#markerdetector.setMinMaxSize(0.01)
+    
 try:
+    _,camframe = cap.read()
+    # Apply thresholding
+    ctlx = cv2.getTrackbarPos('topleftx','Tracking')
+    #ctly = cv2.getTrackbarPos('toplefty','Tracking')
+    ctrx = cv2.getTrackbarPos('toprightx','Tracking')
+    #ctry = cv2.getTrackbarPos('toprighty','Tracking')
+    cty = cv2.getTrackbarPos('topy','Tracking')            
+    cbrx = cv2.getTrackbarPos('bottomrightx','camera')
+    cby = cv2.getTrackbarPos('bottomy','camera')
+    cblx = cv2.getTrackbarPos('bottomleftx','camera')
+    cbw = cv2.getTrackbarPos('bottomwidth','camera')           
+
+    ctly = cty
+    ctry = cty
+    crby = cby
+    clby = cby
+    
+    #frame = four_point_transform(capframe, pts) 
+    #frame = cv2.resize(capframe,(320,320))          
+    markers = detector.detect(camframe)
+
+    for marker in markers:
+        if marker.id < 10:        
+            # print marker ID and point positions
+            print("Marker: {:d}".format(marker.id))
+            print "green", marker[1], type(marker[1])
+            if marker.id == 1:
+                ctlx = int(marker[2].item(0)) 
+                ctly = int(marker[2].item(1))
+            if marker.id == 2:
+                ctrx = int(marker[3].item(0))
+                ctry = int(marker[3].item(1))              
+            if marker.id == 3:
+                cbrx = int(marker[0].item(0)) 
+                cbry = int(marker[0].item(1))
+            if marker.id == 4:
+                cblx = int(marker[1].item(0))
+                cbly = int(marker[1].item(1))                
+            for i, point in enumerate(marker):
+                print("\t{:d} {}".format(i, str(point)))
+            marker.draw(camframe, np.array([255, 255, 255]), 2)
+
+            # # calculate marker extrinsics for marker size of 3.5cm
+            # marker.calculateExtrinsics(0.035, camparam)
+            # print("Marker extrinsics:\n{:s}\n{:s}".format(marker.Tvec, marker.Rvec))
+
+            print("detected ids: {}".format(", ".join(str(m.id) for m in markers)))         
+
+    cby = cbly
+    cbw = cbrx - cblx
+    cty = (ctly + ctry) / 2
+    
+    pts = np.array([(ctlx , cty), (ctrx, cty), (cblx + cbw , cby), (cblx,cby)]) 
+    tick = time.time()
+    wherex = 0
+    wherey = 0
+    directon = 0
     while(True):
-        for ball in range(2):
-            _, capframe = cap.read()
-            ctlx = cv2.getTrackbarPos('topleftx','Tracking')
-            #ctly = cv2.getTrackbarPos('toplefty','Tracking')
-            ctrx = cv2.getTrackbarPos('toprightx','Tracking')
-            #ctry = cv2.getTrackbarPos('toprighty','Tracking')
-            cty = cv2.getTrackbarPos('topy','Tracking')            
-            cbrx = cv2.getTrackbarPos('bottomrightx','camera')
-            cby = cv2.getTrackbarPos('bottomy','camera')
-            cblx = cv2.getTrackbarPos('bottomleftx','camera')
-            cbw = cv2.getTrackbarPos('bottomwidth','camera')           
-            pts = np.array([(ctlx , cty), (ctrx, cty), (cblx + cbw , cby), (cblx,cby)])    
-            frame = four_point_transform(capframe, pts) 
-            #frame = cv2.resize(capframe,(320,320))  
 
-            #converting to HSV
-            hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-            hue,sat,val = cv2.split(hsv)
+        _, capframe = cap.read()
 
-            # get info from track bar and appy to result
-            hmin = cv2.getTrackbarPos('hmin','HueComp')
-            hmax = cv2.getTrackbarPos('hmax','HueComp')
-            
-
-            smin = cv2.getTrackbarPos('smin','SatComp')
-            smax = cv2.getTrackbarPos('smax','SatComp')
+        frame = four_point_transform(capframe, pts) 
+        #frame = cv2.resize(capframe,(320,320))  
 
 
-            vmin = cv2.getTrackbarPos('vmin','ValComp')
-            vmax = cv2.getTrackbarPos('vmax','ValComp')
+        # Apply thresholding
+        
+        markers = detector.detect(frame)
 
-            # Apply thresholding
-            
-            hthresh = cv2.inRange(np.array(hue),np.array(0),np.array(hmin))     
-            if ball == 1:
-                hthresh = cv2.inRange(np.array(hue),np.array(hmin),np.array(hmax))
-           
-            sthresh = cv2.inRange(np.array(sat),np.array(smin),np.array(smax))
-            vthresh = cv2.inRange(np.array(val),np.array(vmin),np.array(vmax))
+        for marker in markers:
+            # print marker ID and point positions
+            if marker.id > 9:
+                #print("Marker: {:d}".format(marker.id))
+                wherex = 0
+                for loop in range(4):
+                    wherex += marker[loop].item(0)
+                wherex = int(wherex / 4)
+                wherey = 0
+                for loop in range(4):
+                    wherey += marker[loop].item(1)
+                wherey = int(wherey / 4)                
+                print wherex,wherey
+                direction = (int(math.atan2((marker[1].item(1) - marker[2].item(1) ),(marker[1].item(0) - marker[2].item(0) )) * 180.0 / 3.1415926) + 450) % 360
+                marker.draw(frame, np.array([255, 255, 255]), 2)
 
-            # AND h s and v
-            tracking = cv2.bitwise_and(hthresh,cv2.bitwise_and(sthresh,vthresh))
 
-            # Some morpholigical filtering
-            dilation = cv2.dilate(tracking,kernel,iterations = 1)
-            closing = cv2.morphologyEx(dilation, cv2.MORPH_CLOSE, kernel)
-            closing = cv2.GaussianBlur(closing,(5,5),0)
-            
-            # Detect circles using HoughCircles
-            #circles = cv2.HoughCircles(closing,cv2.HOUGH_GRADIENT,2,120,param1=120,param2=50,minRadius=10,maxRadius=0)
-            im2,circles,heirach = cv2.findContours(closing,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-            # circles = np.uint16(np.around(circles))
-
-            #Draw Circles
-            if len(circles) > 0:
-                #find largest contour in mask, use to compute minEnCircle 
-                c = max(circles, key = cv2.contourArea)
-                (x,y), radius = cv2.minEnclosingCircle(c)    
-                # If the ball is far, draw it in green
-                wherex[ball] = int(x)#(int(round(i[0])) + wherex) / 2
-                wherey[ball] = int(y)#(int(round(i[1])) + wherey) / 2
-                dia[ball] = int(radius)#(int(round(i[2])) + dia) / 2
-                cv2.circle(frame,(wherex[ball],wherey[ball]),dia[ball],(0,255,0),5)
-                #client1.loop_start()    #start the loop#
-                #client1.subscribe("house/bulbs/bulb1")
-            #Show the result in frames
-            cv2.imshow('HueComp',hthresh)
-            cv2.imshow('SatComp',sthresh)
-            cv2.imshow('ValComp',vthresh)
-            cv2.imshow('closing',closing)
-            cv2.imshow('Tracking',frame)
-            cv2.imshow('camera',capframe)    
+        #print("detected ids: {}".format(", ".join(str(m.id) for m in markers)))
              
-        alphaxy = 0.5 
-        wherexav = int((((wherex[0] + wherex[1]) / 2.0) * alphaxy) + (wherexav * (1- alphaxy)))
-        whereyav = int((((wherey[0] + wherey[1]) / 2.0) * alphaxy) + (whereyav * (1- alphaxy)))
-        radius = int(math.sqrt(((wherexav -160) * (wherexav -160)) + ((120 - whereyav) * (120 - whereyav))))
-        alphadir = 0.25
-        direction = (int(math.atan2((wherey[0] - wherey[1]),(wherex[0] - wherex[1])) * 180.0 / 3.1415926) + 450) % 360
+            # alphaxy = 0.5 
+            # wherexav = int((((wherex[0] + wherex[1]) / 2.0) * alphaxy) + (wherexav * (1- alphaxy)))
+            # whereyav = int((((wherey[0] + wherey[1]) / 2.0) * alphaxy) + (whereyav * (1- alphaxy)))
+            # radius = int(math.sqrt(((wherexav -160) * (wherexav -160)) + ((120 - whereyav) * (120 - whereyav))))
+            # alphadir = 0.25
+            # direction = (int(math.atan2((wherey[0] - wherey[1]),(wherex[0] - wherex[1])) * 180.0 / 3.1415926) + 450) % 360
 
-        diff = (direction - olddirection + 180) % 360 - 180
-        diff = diff * alphadir
-        direction = int((olddirection + diff + 360) % 360)            
-        olddirection = direction
-        bearing = ((180 - ((int(math.atan2((120 - whereyav),(wherexav -160)) * 180.0 / 3.1415926) + 450) % 360)) + 360) % 360
+            # diff = (direction - olddirection + 180) % 360 - 180
+            # diff = diff * alphadir
+            # direction = int((olddirection + diff + 360) % 360)            
+            # olddirection = direction
+            # bearing = ((180 - ((int(math.atan2((120 - whereyav),(wherexav -160)) * 180.0 / 3.1415926) + 450) % 360)) + 360) % 360
         msgs = []
         if (time.time() - tick) > 1:
-            for ball in range(2): 
-                print "ball"+str(ball)+": ",wherex[ball],wherey[ball]
-            msgs = [("where/radius", radius,0,True)]  + msgs              
-            msgs = [("where/x", (wherexav -160),0,True)]  + msgs
-            msgs = [("where/y",(120 - whereyav),0,True)] + msgs
-            print "direction" , direction
+            #msgs = [("where/radius", radius,0,True)]  + msgs              
+            msgs = [("where/x", (wherex -160),0,True)]  + msgs
+            msgs = [("where/y",(160 - wherey),0,True)] + msgs
+            #print "direction" , direction
             #print "diff", diff
             #msgs = [("where/diff", diff ,0,True)] + msgs
             msgs = [("where/direction", direction,0,True)] + msgs  
-            msgs = [("where/bearing", bearing,0,True)] + msgs  
+            #msgs = [("where/bearing", bearing,0,True)] + msgs  
 
             print msgs
             publish.multiple(msgs, hostname="127.0.0.1")
-           
+               
             tick = time.time()
+        #cv2.imshow("frame", frame)    
+        cv2.imshow("Tracking", frame)
+        cv2.imshow("camera", camframe)   
         k = cv2.waitKey(5) & 0xFF
         if k == 27:
             break
