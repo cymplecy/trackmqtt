@@ -76,7 +76,8 @@ cap = cv2.VideoCapture(-1)
 camwidth = 640
 camheight = 480
 trackwidth = camwidth / 2
-trackheight = camheight / 2
+trackheight = trackwidth
+#trackheight = camheight / 2
 cap.set(3,camwidth)
 cap.set(4,camwidth)
 
@@ -128,16 +129,16 @@ def four_point_transform(image, pts):
     # (i.e. top-down view) of the image, again specifying points
     # in the top-left, top-right, bottom-right, and bottom-left
     # order
+    # dst = np.array([
+        # [0, 0],
+        # [maxWidth - 1, 0],
+        # [maxWidth - 1, maxHeight - 1],
+        # [0, maxHeight - 1]], dtype = "float32")
     dst = np.array([
         [0, 0],
-        [maxWidth - 1, 0],
-        [maxWidth - 1, maxHeight - 1],
-        [0, maxHeight - 1]], dtype = "float32")
-    dst = np.array([
-        [0, 0],
-        [319, 0],
-        [319, 319],
-        [0, 319]], dtype = "float32")
+        [trackwidth - 1 , 0],
+        [trackwidth - 1, trackheight - 1],
+        [0, trackheight - 1]], dtype = "float32")
 
     # compute the perspective transform matrix and then apply it
     M = cv2.getPerspectiveTransform(rect, dst)
@@ -260,7 +261,7 @@ try:
     corners, ids, rejectedImgPoints = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)  
 
     for marker in range(len(ids)):
-        if ids.item(marker) < 10:  
+        if ids.item(marker) < 5:  
             # print marker ID and point positions
             print("Marker: {:d}".format(ids.item(marker)))
 
@@ -297,6 +298,7 @@ try:
     directon = 0
 
     #img = cv.QueryFrame(capture)
+    gridDrawn = False
     while(True):
         for loop in range(5):
             _, capframe = cap.read()
@@ -313,16 +315,12 @@ try:
         if ids is not None:
             for marker in range(len(ids)):
                 # print marker ID and point positions
-                if ids[marker] > 9:
+                if ids[marker] > 4:
                     #print("Marker: {:d}".format(marker.id))
-                    wherex = 0
-                    for loop in range(4):
-                        wherex +=  int(corners[marker].item(0,loop, 0))
-                    wherex = int(wherex / 4)
-                    wherey = 0
-                    for loop in range(4):
-                        wherey += int(corners[marker].item(0,loop, 1))
-                    wherey = int(wherey / 4)                
+                    wherex =  int((corners[marker].item(0,2, 0)+ corners[marker].item(0,3, 0)) / 2)
+                    wherey =  int((corners[marker].item(0,2, 1)+ corners[marker].item(0,3, 1)) / 2)
+                    cv2.circle(frame, (wherex, wherey), 20, (255,0,0), 3)
+              
                     #print wherex,wherey
                     direction = (int(math.atan2((corners[marker].item(0,1, 1) - corners[marker].item(0,2, 1) ),(corners[marker].item(0,1, 0) - corners[marker].item(0,2, 0) )) * 180.0 / 3.1415926) + 450) % 360
                     frame = aruco.drawDetectedMarkers(frame, corners)
@@ -333,7 +331,7 @@ try:
                     # alphaxy = 0.5 
                     # wherexav = int((((wherex[0] + wherex[1]) / 2.0) * alphaxy) + (wherexav * (1- alphaxy)))
                     # whereyav = int((((wherey[0] + wherey[1]) / 2.0) * alphaxy) + (whereyav * (1- alphaxy)))
-                    # radius = int(math.sqrt(((wherexav -160) * (wherexav -160)) + ((120 - whereyav) * (120 - whereyav))))
+                    radius = int(math.sqrt(((wherex - (trackwidth / 2)) * (wherex - (trackwidth / 2))) + (((trackheight / 2) - wherey) * ((trackheight / 2) - wherey))))
                     # alphadir = 0.25
                     # direction = (int(math.atan2((wherey[0] - wherey[1]),(wherex[0] - wherex[1])) * 180.0 / 3.1415926) + 450) % 360
 
@@ -341,27 +339,34 @@ try:
                     # diff = diff * alphadir
                     # direction = int((olddirection + diff + 360) % 360)            
                     # olddirection = direction
-                    # bearing = ((180 - ((int(math.atan2((120 - whereyav),(wherexav -160)) * 180.0 / 3.1415926) + 450) % 360)) + 360) % 360
+                    bearing = ((180 - ((int(math.atan2((trackheight / 2) - wherey,wherex - (trackwidth / 2)) * 180.0 / 3.1415926) + 450) % 360)) + 360) % 360
             msgs = []
             if (time.time() - tick) > 0.5:
                 #msgs = [("where/radius", radius,0,True)]  + msgs              
-                msgs = [("robot/1/x", (wherex -160),0,True)]  + msgs
-                msgs = [("robot/1/y",(160 - wherey),0,True)] + msgs
+                msgs = [("robot/1/robot_x", (wherex - (trackwidth / 2)),0,True)]  + msgs
+                msgs = [("robot/1/robot_y",((trackheight / 2) - wherey),0,True)] + msgs
                 #print "direction" , direction
                 #print "diff", diff
                 #msgs = [("where/diff", diff ,0,True)] + msgs
-                msgs = [("robot/1/direction", direction,0,True)] + msgs  
-                #msgs = [("where/bearing", bearing,0,True)] + msgs  
+                msgs = [("robot/1/robot_direction", direction,0,True)] + msgs  
+                msgs = [("robot/1/robot_radius", radius,0,True)] + msgs                  
+                msgs = [("robot/1/robot_bearing", bearing,0,True)] + msgs  
 
-                #print msgs
+                print msgs
                 publish.multiple(msgs, hostname="127.0.0.1")
                    
                 tick = time.time()
             #else:
             #    print time.time() - tick
         #cv2.imshow("frame", frame)    
+        #if gridDrawn is not True:
+        for gridStep in range(1,4):
+            cv2.line(frame,(0,(trackheight / 4) * gridStep),(trackwidth,(trackheight / 4) * gridStep),(255,0,0),1)
+            cv2.line(frame,((trackwidth / 4) * gridStep,0),((trackwidth / 4) * gridStep,trackheight),(255,0,0),1)            
+            gridDrawn = True
+        cv2.imshow("camera", camframe)             
         cv2.imshow("Tracking", frame)
-        cv2.imshow("camera", camframe)   
+  
         k = cv2.waitKey(1) & 0xFF
         if k == 27:
             break

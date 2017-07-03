@@ -18,6 +18,7 @@ allCorners = []
 allIds = []
 decimator = 0
 for i in range(300):
+    print i
 
     ret,frame = cap.read()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
